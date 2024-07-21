@@ -42,11 +42,33 @@ void GetCurrentTimeFormatted(char *buffer, size_t bufferSize) {
            timeinfo->tm_min, timeinfo->tm_sec);
 #endif
 }
+// Function to enable ANSI escape codes in Windows CMD and PowerShell
+void EnableANSI() {
+  HANDLE hOut = GetStdHandle(STD_OUTPUT_HANDLE);
+  if (hOut == INVALID_HANDLE_VALUE) {
+    puts("Error getting standard output handle.");
+    return;
+  }
+
+  DWORD dwMode = 0;
+  if (!GetConsoleMode(hOut, &dwMode)) {
+    printf("Error getting console mode.");
+    return;
+  }
+
+  dwMode |= ENABLE_VIRTUAL_TERMINAL_PROCESSING;
+  if (!SetConsoleMode(hOut, dwMode)) {
+    printf("Error setting console mode.");
+    return;
+  }
+}
 
 int main() {
+  EnableANSI();       // Enable ANSI escape codes
   char timeBuffer[9]; // Buffer to hold the formatted time
 
-  puts("\e[1;32m"); // Set terminal text color to green
+  puts("\033[1m"
+       "\033[32m"); // Set terminal text color to green
   for (;;) {
 #ifdef _WIN32
     Sleep(1000); // Sleep for 1 second
