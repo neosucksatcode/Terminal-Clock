@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <string.h>
 #include <time.h>
 
 #ifdef _WIN64
@@ -10,22 +11,6 @@
 #elif __APPLE__
 #include <unistd.h>
 #endif
-
-unsigned long long time_m() {
-#ifdef _WIN64
-  return GetTickCount64();
-#elif _WIN32
-  return GetTickCount();
-#elif __linux__
-  struct timespec ts;
-  clock_gettime(CLOCK_REALTIME, &ts);
-  return ts.tv_sec * 1000LL + ts.tv_nsec / 1000000LL;
-#elif __APPLE__
-  struct timespec ts;
-  clock_gettime(CLOCK_MONOTONIC, &ts); // Use CLOCK_MONOTONIC
-  return ts.tv_sec * 1000LL + ts.tv_nsec / 1000000LL;
-#endif
-}
 
 void GetCurrentTimeFormatted(char *buffer, size_t bufferSize) {
 #ifdef _WIN32
@@ -42,8 +27,48 @@ void GetCurrentTimeFormatted(char *buffer, size_t bufferSize) {
            timeinfo->tm_min, timeinfo->tm_sec);
 #endif
 }
-// Function to enable ANSI escape codes in Windows CMD and PowerShell
+
+void GetCurrentTimeFormattedMilli(char *buffer, size_t bufferSize) {
+#ifdef _WIN32
+  SYSTEMTIME st;
+  GetLocalTime(&st);
+  snprintf(buffer, bufferSize, "%02d:%02d:%02d:%03d", st.wHour, st.wMinute,
+           st.wSecond, st.wMilliseconds);
+#else
+  struct timespec ts;
+  clock_gettime(CLOCK_REALTIME, &ts);
+  struct tm *timeinfo = localtime(&ts.tv_sec);
+  snprintf(buffer, bufferSize, "%02d:%02d:%02d:%03ld", timeinfo->tm_hour,
+           timeinfo->tm_min, timeinfo->tm_sec, ts.tv_nsec / 1000000);
+#endif
+}
+
+void GetCurrentTimeFormattedDays(char *buffer, size_t bufferSize) {
+  time_t rawtime;
+  struct tm *timeinfo;
+  time(&rawtime);
+  timeinfo = localtime(&rawtime);
+  snprintf(buffer, bufferSize, "%d", timeinfo->tm_yday);
+}
+
+void GetCurrentTimeFormattedWeeks(char *buffer, size_t bufferSize) {
+  time_t rawtime;
+  struct tm *timeinfo;
+  time(&rawtime);
+  timeinfo = localtime(&rawtime);
+  snprintf(buffer, bufferSize, "%d", (timeinfo->tm_yday / 7));
+}
+
+void GetCurrentTimeFormattedYears(char *buffer, size_t bufferSize) {
+  time_t rawtime;
+  struct tm *timeinfo;
+  time(&rawtime);
+  timeinfo = localtime(&rawtime);
+  snprintf(buffer, bufferSize, "%d", (1900 + timeinfo->tm_year));
+}
+
 void EnableANSI() {
+#ifdef _WIN32
   HANDLE hOut = GetStdHandle(STD_OUTPUT_HANDLE);
   if (hOut == INVALID_HANDLE_VALUE) {
     puts("Error getting standard output handle.");
@@ -61,24 +86,88 @@ void EnableANSI() {
     printf("Error setting console mode.");
     return;
   }
+#endif
 }
 
-int main() {
-  EnableANSI();       // Enable ANSI escape codes
-  char timeBuffer[9]; // Buffer to hold the formatted time
+void PrintUsage() {
+  printf("Usage: timeapp [-m | -d | -w | -y | -a]\n");
+  printf("  -m : Show current time with milliseconds\n");
+  printf("  -d : Show current day of the year\n");
+  printf("  -w : Show current week of the year\n");
+  printf("  -y : Show current year\n");
+  printf("  -a : Show all time formats\n");
+}
 
-  puts("\033[1m"
-       "\033[32m"); // Set terminal text color to green
+int main(int argc, char **argv) {
+  EnableANSI();
+  puts("\033[1m\033[32m");
+
+  int sleepDuration = 1000; // Default sleep duration in milliseconds
+  char mode = 's';          // Default mode: seconds
+
+  if (argc >= 2) {
+    if (strcmp(argv[1], "-m") == 0) {
+      sleepDuration = 1;
+      mode = 'm';
+    } else if (strcmp(argv[1], "-d") == 0) {
+      mode = 'd';
+    } else if (strcmp(argv[1], "-w") == 0) {
+      mode = 'w';
+    } else if (strcmp(argv[1], "-y") == 0) {
+      mode = 'y';
+    } else if (strcmp(argv[1], "-a") == 0) {
+      sleepDuration = 1;
+      mode = 'a';
+    } else {
+      PrintUsage();
+      return 1;
+    }
+  }
+
+  char timeBuffer[13];
+  char dayBuffer[4];
+  char weekBuffer[3];
+  char yearBuffer[5];
+
   for (;;) {
 #ifdef _WIN32
-    Sleep(1000); // Sleep for 1 second
+    Sleep(sleepDuration);
 #else
-    sleep(1); // Sleep for 1 second
+    usleep(sleepDuration * 1000);
 #endif
 
-    GetCurrentTimeFormatted(timeBuffer, sizeof(timeBuffer));
-    printf("\r%s", timeBuffer); // Print the current time
-    fflush(stdout);             // Ensure the output is displayed immediately
+    switch (mode) {
+    case 'm':
+      GetCurrentTimeFormattedMilli(timeBuffer, sizeof(timeBuffer));
+      printf("\r%s", timeBuffer);
+      break;
+    case 'd':
+      GetCurrentTimeFormattedDays(dayBuffer, sizeof(dayBuffer));
+      printf("\rDay of the year: %s\033[0m", dayBuffer);
+      return 0;
+    case 'w':
+      GetCurrentTimeFormattedWeeks(weekBuffer, sizeof(weekBuffer));
+      printf("\rWeek of the year: %s\033[0m", weekBuffer);
+      return 0;
+    case 'y':
+      GetCurrentTimeFormattedYears(yearBuffer, sizeof(yearBuffer));
+      printf("\rYear: %s\033[0m", yearBuffer);
+      return 0;
+    case 'a':
+      GetCurrentTimeFormattedMilli(timeBuffer, sizeof(timeBuffer));
+      GetCurrentTimeFormattedDays(dayBuffer, sizeof(dayBuffer));
+      GetCurrentTimeFormattedWeeks(weekBuffer, sizeof(weekBuffer));
+      GetCurrentTimeFormattedYears(yearBuffer, sizeof(yearBuffer));
+      printf("\r%s | Day: %s | Week: %s | Year: %s", timeBuffer, dayBuffer,
+             weekBuffer, yearBuffer);
+      break;
+    default:
+      GetCurrentTimeFormatted(timeBuffer, sizeof(timeBuffer));
+      printf("\r%s", timeBuffer);
+      break;
+    }
+    fflush(stdout);
   }
+
   return 0;
 }
